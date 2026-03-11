@@ -13,6 +13,7 @@ import {
   Download
 } from "lucide-react";
 import { SEO } from "@/components/SEO";
+import { StatusBadge } from "@/components/StatusBadge";
 
 export default function VendorBookings() {
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
@@ -141,7 +142,6 @@ export default function VendorBookings() {
                   {...booking}
                   onAccept={() => console.log("Accept:", booking.id)}
                   onReject={() => console.log("Reject:", booking.id)}
-                  onContact={() => console.log("Contact:", booking.renter)}
                 />
               ))}
             </div>

@@ -223,7 +223,17 @@ export default function VendorListings() {
             <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "space-y-4"}>
               {filteredListings.map((listing) => (
                 <div key={listing.id} className="relative group">
-                  <EquipmentCard {...listing} />
+                  <EquipmentCard 
+                    id={listing.id}
+                    title={listing.name}
+                    category={listing.category}
+                    imageUrl={listing.image}
+                    price={listing.price}
+                    rating={listing.rating}
+                    reviewCount={listing.reviews}
+                    location={listing.location}
+                    availability={listing.status === "available" ? "available" : "unavailable"}
+                  />
                   <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Link href={`/vendor/listings/${listing.id}/edit`}>
                       <Button size="sm" variant="secondary">

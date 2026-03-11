@@ -23,28 +23,28 @@ export default function VendorDashboard() {
 
   const stats = [
     {
-      label: "Total Earnings",
+      title: "Total Earnings",
       value: "₦2,450,000",
       change: "+12.5%",
       changeType: "increase" as const,
       icon: DollarSign,
     },
     {
-      label: "Active Listings",
+      title: "Active Listings",
       value: "24",
       change: "+3",
       changeType: "increase" as const,
       icon: Package,
     },
     {
-      label: "Active Bookings",
+      title: "Active Bookings",
       value: "12",
       change: "-2",
       changeType: "decrease" as const,
       icon: Calendar,
     },
     {
-      label: "Completion Rate",
+      title: "Completion Rate",
       value: "98.5%",
       change: "+1.2%",
       changeType: "increase" as const,
@@ -133,7 +133,7 @@ export default function VendorDashboard() {
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             {stats.map((stat) => (
-              <StatCard key={stat.label} {...stat} />
+              <StatCard key={stat.title} {...stat} />
             ))}
           </div>
 
@@ -173,7 +173,6 @@ export default function VendorDashboard() {
                   {...booking}
                   onAccept={() => console.log("Accept:", booking.id)}
                   onReject={() => console.log("Reject:", booking.id)}
-                  onContact={() => console.log("Contact:", booking.renter)}
                 />
               ))}
             </div>
