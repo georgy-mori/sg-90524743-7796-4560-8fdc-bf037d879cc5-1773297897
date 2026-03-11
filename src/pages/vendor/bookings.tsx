@@ -26,40 +26,44 @@ export default function VendorBookings() {
       equipment: "Concrete Mixer - 180L",
       image: "https://images.unsplash.com/photo-1581094271901-8022df4466f9?w=400",
       renter: "John Doe",
-      startDate: "2025-01-15",
-      endDate: "2025-01-20",
+      startDate: new Date("2025-01-15"),
+      endDate: new Date("2025-01-20"),
       amount: 75000,
       status: "active" as const,
+      location: "Lagos, Nigeria"
     },
     {
       id: "BK002",
       equipment: "Scaffolding Set - 50ft",
       image: "https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=400",
       renter: "Jane Smith",
-      startDate: "2025-01-18",
-      endDate: "2025-01-25",
+      startDate: new Date("2025-01-18"),
+      endDate: new Date("2025-01-25"),
       amount: 120000,
       status: "pending" as const,
+      location: "Abuja, Nigeria"
     },
     {
       id: "BK003",
       equipment: "Power Generator - 10KVA",
       image: "https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=400",
       renter: "Mike Johnson",
-      startDate: "2025-01-10",
-      endDate: "2025-01-14",
+      startDate: new Date("2025-01-10"),
+      endDate: new Date("2025-01-14"),
       amount: 85000,
       status: "completed" as const,
+      location: "Port Harcourt, Nigeria"
     },
     {
       id: "BK004",
       equipment: "Welding Machine - 200A",
       image: "https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=400",
       renter: "Sarah Williams",
-      startDate: "2025-01-22",
-      endDate: "2025-01-28",
+      startDate: new Date("2025-01-22"),
+      endDate: new Date("2025-01-28"),
       amount: 60000,
-      status: "confirmed" as const,
+      status: "active" as const,
+      location: "Lagos, Nigeria"
     },
   ];
 
@@ -139,7 +143,16 @@ export default function VendorBookings() {
               {filteredBookings.map((booking) => (
                 <BookingCard
                   key={booking.id}
-                  {...booking}
+                  bookingId={booking.id}
+                  equipmentName={booking.equipment}
+                  equipmentImage={booking.image}
+                  startDate={booking.startDate}
+                  endDate={booking.endDate}
+                  totalPrice={booking.amount}
+                  status={booking.status}
+                  userRole="vendor"
+                  renterName={booking.renter}
+                  location={booking.location}
                   onAccept={() => console.log("Accept:", booking.id)}
                   onReject={() => console.log("Reject:", booking.id)}
                 />

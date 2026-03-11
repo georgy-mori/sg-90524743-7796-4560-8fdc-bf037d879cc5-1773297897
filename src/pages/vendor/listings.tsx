@@ -232,7 +232,7 @@ export default function VendorListings() {
                     rating={listing.rating}
                     reviewCount={listing.reviews}
                     location={listing.location}
-                    availability={listing.status === "available" ? "available" : "unavailable"}
+                    availability={listing.status === "available" ? "available" : listing.status === "rented" ? "rented" : "maintenance"}
                   />
                   <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Link href={`/vendor/listings/${listing.id}/edit`}>
