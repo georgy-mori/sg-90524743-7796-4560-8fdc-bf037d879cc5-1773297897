@@ -224,7 +224,6 @@ export default function VendorListings() {
               {filteredListings.map((listing) => (
                 <div key={listing.id} className="relative group">
                   <EquipmentCard 
-                    id={listing.id}
                     title={listing.name}
                     category={listing.category}
                     imageUrl={listing.image}
