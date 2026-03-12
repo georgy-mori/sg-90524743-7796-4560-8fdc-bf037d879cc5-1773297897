@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Card } from "@/components/ui/card";
@@ -11,18 +12,95 @@ import {
   TrendingUp,
   AlertCircle,
   CheckCircle,
-  Clock
+  Clock,
+  Loader2
 } from "lucide-react";
 import { SEO } from "@/components/SEO";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { adminService } from "@/services/adminService";
+import { authService } from "@/services/authService";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AdminDashboard() {
+  const router = useRouter();
+  const { toast } = useToast();
   const [timeRange, setTimeRange] = useState("30d");
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    totalListings: 0,
+    totalBookings: 0,
+    totalRevenue: 0
+  });
+  const [pendingCounts, setPendingCounts] = useState({
+    vendors: 0,
+    kyc: 0,
+    payouts: 0,
+    disputes: 0
+  });
 
-  const stats = [
+  useEffect(() => {
+    checkAuthAndLoadData();
+  }, []);
+
+  const checkAuthAndLoadData = async () => {
+    try {
+      const hasRole = await authService.hasRole("admin");
+      if (!hasRole) {
+        toast({
+          title: "Access Denied",
+          description: "You must be an admin to access this page",
+          variant: "destructive"
+        });
+        router.push("/");
+        return;
+      }
+
+      await loadDashboardData();
+    } catch (error) {
+      console.error("Auth check error:", error);
+      router.push("/auth/login");
+    }
+  };
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+
+      // Load platform statistics
+      const platformStats = await adminService.getPlatformStats();
+      setStats(platformStats);
+
+      // Load pending items counts
+      const [vendors, kyc, payouts, disputes] = await Promise.all([
+        adminService.getPendingVendors(),
+        adminService.getPendingKYC(),
+        adminService.getPendingPayouts(),
+        adminService.getAllDisputes("pending")
+      ]);
+
+      setPendingCounts({
+        vendors: vendors.length,
+        kyc: kyc.length,
+        payouts: payouts.length,
+        disputes: disputes.length
+      });
+    } catch (error: any) {
+      console.error("Load dashboard data error:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load dashboard data",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const statCards = [
     {
       title: "Total Users",
-      value: "12,458",
+      value: stats.totalUsers.toLocaleString(),
       change: "+12.5%",
       changeType: "increase" as const,
       icon: Users,
@@ -31,7 +109,7 @@ export default function AdminDashboard() {
     },
     {
       title: "Active Listings",
-      value: "3,842",
+      value: stats.totalListings.toLocaleString(),
       change: "+8.2%",
       changeType: "increase" as const,
       icon: Package,
@@ -40,7 +118,7 @@ export default function AdminDashboard() {
     },
     {
       title: "Total Bookings",
-      value: "8,245",
+      value: stats.totalBookings.toLocaleString(),
       change: "+15.3%",
       changeType: "increase" as const,
       icon: Calendar,
@@ -49,7 +127,7 @@ export default function AdminDashboard() {
     },
     {
       title: "Platform Revenue",
-      value: "₦245M",
+      value: `₦${(stats.totalRevenue / 1000000).toFixed(1)}M`,
       change: "+22.1%",
       changeType: "increase" as const,
       icon: DollarSign,
@@ -79,10 +157,34 @@ export default function AdminDashboard() {
   ];
 
   const pendingActions = [
-    { type: "Vendor Approvals", count: 12, icon: Clock, color: "text-yellow-600" },
-    { type: "KYC Verifications", count: 8, icon: AlertCircle, color: "text-orange-600" },
-    { type: "Payout Requests", count: 15, icon: DollarSign, color: "text-green-600" },
-    { type: "Dispute Cases", count: 5, icon: AlertCircle, color: "text-red-600" },
+    { 
+      type: "Vendor Approvals", 
+      count: pendingCounts.vendors, 
+      icon: Clock, 
+      color: "text-yellow-600",
+      route: "/admin/vendors"
+    },
+    { 
+      type: "KYC Verifications", 
+      count: pendingCounts.kyc, 
+      icon: AlertCircle, 
+      color: "text-orange-600",
+      route: "/admin/kyc"
+    },
+    { 
+      type: "Payout Requests", 
+      count: pendingCounts.payouts, 
+      icon: DollarSign, 
+      color: "text-green-600",
+      route: "/admin/payouts"
+    },
+    { 
+      type: "Dispute Cases", 
+      count: pendingCounts.disputes, 
+      icon: AlertCircle, 
+      color: "text-red-600",
+      route: "/admin/disputes"
+    },
   ];
 
   const recentActivity = [
@@ -120,6 +222,14 @@ export default function AdminDashboard() {
     },
   ];
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <>
       <SEO title="Admin Dashboard - Equipment Rental" description="System overview and management" />
@@ -147,7 +257,7 @@ export default function AdminDashboard() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {stats.map((stat) => (
+            {statCards.map((stat) => (
               <Card key={stat.title} className="p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className={`p-3 rounded-full ${stat.bgColor}`}>
@@ -167,7 +277,11 @@ export default function AdminDashboard() {
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
             {pendingActions.map((action) => (
-              <Card key={action.type} className="p-6 hover:shadow-md transition-shadow cursor-pointer">
+              <Card 
+                key={action.type} 
+                className="p-6 hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => router.push(action.route)}
+              >
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-slate-600 mb-1">{action.type}</p>
@@ -231,23 +345,43 @@ export default function AdminDashboard() {
             <Card className="p-6">
               <h3 className="text-lg font-bold text-slate-900 mb-4">Quick Actions</h3>
               <div className="space-y-2">
-                <Button variant="outline" className="w-full justify-start">
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => router.push("/admin/users")}
+                >
                   <Users className="w-4 h-4 mr-2" />
                   Manage Users
                 </Button>
-                <Button variant="outline" className="w-full justify-start">
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => router.push("/admin/listings")}
+                >
                   <Package className="w-4 h-4 mr-2" />
                   Review Listings
                 </Button>
-                <Button variant="outline" className="w-full justify-start">
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => router.push("/admin/bookings")}
+                >
                   <Calendar className="w-4 h-4 mr-2" />
                   View Bookings
                 </Button>
-                <Button variant="outline" className="w-full justify-start">
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => router.push("/admin/payouts")}
+                >
                   <DollarSign className="w-4 h-4 mr-2" />
                   Approve Payouts
                 </Button>
-                <Button variant="outline" className="w-full justify-start">
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => router.push("/admin/analytics")}
+                >
                   <TrendingUp className="w-4 h-4 mr-2" />
                   View Reports
                 </Button>

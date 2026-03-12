@@ -85,9 +85,9 @@ export default function RenterWallet() {
         return;
       }
 
-      await walletService.topUpWallet({
+      await walletService.topUp({
         amount,
-        payment_method: "card",
+        payment_method: "paystack",
         reference: `TOPUP-${Math.floor(Math.random() * 1000000)}`
       });
       
