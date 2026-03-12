@@ -252,6 +252,7 @@ export default function Browse() {
                   price={Number(listing.price_per_day)}
                   location={listing.location || "Nigeria"}
                   rating={4.5}
+                  reviewCount={12}
                   availability={listing.availability}
                   isVerified={listing.vendor?.is_verified || false}
                 />
