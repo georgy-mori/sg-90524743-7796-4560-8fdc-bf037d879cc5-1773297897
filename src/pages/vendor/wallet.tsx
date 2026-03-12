@@ -27,6 +27,8 @@ export default function VendorWallet() {
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState("");
   const [bankAccount, setBankAccount] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [accountName, setAccountName] = useState("");
 
   useEffect(() => {
     checkAuthAndLoadData();
@@ -103,7 +105,11 @@ export default function VendorWallet() {
         return;
       }
 
-      await walletService.requestPayout(amount, bankAccount);
+      await walletService.requestPayout(amount, {
+        bank_name: bankName || "Unknown Bank",
+        account_number: bankAccount,
+        account_name: accountName || "User"
+      });
       
       toast({
         title: "Success",
@@ -113,6 +119,8 @@ export default function VendorWallet() {
       setShowPayoutModal(false);
       setPayoutAmount("");
       setBankAccount("");
+      setBankName("");
+      setAccountName("");
       await loadWalletData();
     } catch (error: any) {
       toast({
@@ -281,11 +289,35 @@ export default function VendorWallet() {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Bank Account
+                    Bank Name
                   </label>
                   <Input
                     type="text"
-                    placeholder="Account number"
+                    placeholder="E.g. Access Bank"
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Account Name
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="Full name on account"
+                    value={accountName}
+                    onChange={(e) => setAccountName(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Account Number
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="10-digit account number"
                     value={bankAccount}
                     onChange={(e) => setBankAccount(e.target.value)}
                   />

@@ -1,3 +1,5 @@
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Card } from "@/components/ui/card";
@@ -9,45 +11,144 @@ import {
   Package,
   Download,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Loader2
 } from "lucide-react";
 import { SEO } from "@/components/SEO";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { authService } from "@/services/authService";
+import { listingService } from "@/services/listingService";
+import { bookingService } from "@/services/bookingService";
+import { walletService } from "@/services/walletService";
+import { useToast } from "@/hooks/use-toast";
 
 export default function VendorAnalytics() {
-  const earningsData = [
-    { month: "Jul", earnings: 180000 },
-    { month: "Aug", earnings: 220000 },
-    { month: "Sep", earnings: 190000 },
-    { month: "Oct", earnings: 280000 },
-    { month: "Nov", earnings: 310000 },
-    { month: "Dec", earnings: 350000 },
-    { month: "Jan", earnings: 425000 },
-  ];
+  const router = useRouter();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [timeRange, setTimeRange] = useState("30d");
+  const [stats, setStats] = useState({
+    totalRevenue: 0,
+    totalBookings: 0,
+    activeListings: 0,
+    avgRating: 0
+  });
+  const [earningsData, setEarningsData] = useState<any[]>([]);
+  const [bookingsData, setBookingsData] = useState<any[]>([]);
+  const [categoryData, setCategoryData] = useState<any[]>([]);
 
-  const bookingsData = [
-    { month: "Jul", bookings: 12 },
-    { month: "Aug", bookings: 18 },
-    { month: "Sep", bookings: 15 },
-    { month: "Oct", bookings: 22 },
-    { month: "Nov", bookings: 25 },
-    { month: "Dec", bookings: 28 },
-    { month: "Jan", bookings: 32 },
-  ];
+  useEffect(() => {
+    checkAuthAndLoadData();
+  }, [timeRange]);
 
-  const categoryData = [
-    { name: "Construction", value: 45, color: "#0F172A" },
-    { name: "Power Tools", value: 30, color: "#F97316" },
-    { name: "Transport", value: 15, color: "#3B82F6" },
-    { name: "Others", value: 10, color: "#10B981" },
-  ];
+  const checkAuthAndLoadData = async () => {
+    try {
+      const hasRole = await authService.hasRole("vendor");
+      if (!hasRole) {
+        toast({
+          title: "Access Denied",
+          description: "You must be a vendor to access this page",
+          variant: "destructive"
+        });
+        router.push("/");
+        return;
+      }
 
-  const topEquipment = [
-    { name: "Concrete Mixer", bookings: 45, revenue: 675000 },
-    { name: "Scaffolding Set", bookings: 38, revenue: 950000 },
-    { name: "Power Generator", bookings: 32, revenue: 576000 },
-    { name: "Welding Machine", bookings: 28, revenue: 336000 },
-  ];
+      await loadAnalytics();
+    } catch (error) {
+      console.error("Auth check error:", error);
+      router.push("/auth/login");
+    }
+  };
+
+  const loadAnalytics = async () => {
+    try {
+      setLoading(true);
+
+      // Load wallet balance
+      const balance = await walletService.getBalance();
+      
+      // Load vendor listings
+      const listings = await listingService.getVendorListings();
+      const activeListings = listings.filter(l => l.availability === "active").length;
+
+      // Load vendor bookings
+      const bookings = await bookingService.getVendorBookings();
+      const completedBookings = bookings.filter(b => b.status === "completed");
+      
+      // Calculate total revenue from completed bookings
+      const totalRevenue = completedBookings.reduce((sum, b) => sum + Number(b.total_amount || 0), 0);
+
+      // Generate earnings data (last 7 months)
+      const monthlyEarnings = generateMonthlyData(completedBookings, "earnings");
+      const monthlyBookings = generateMonthlyData(bookings, "count");
+
+      // Category distribution
+      const categoryMap = new Map<string, number>();
+      listings.forEach(listing => {
+        const cat = listing.category?.name || "Others";
+        categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
+      });
+
+      const categories = Array.from(categoryMap.entries()).map(([name, value], idx) => ({
+        name,
+        value,
+        color: ["#0F172A", "#F97316", "#3B82F6", "#10B981", "#F59E0B"][idx % 5]
+      }));
+
+      setStats({
+        totalRevenue,
+        totalBookings: bookings.length,
+        activeListings,
+        avgRating: 4.8 // TODO: Calculate from reviews when implemented
+      });
+
+      setEarningsData(monthlyEarnings);
+      setBookingsData(monthlyBookings);
+      setCategoryData(categories);
+    } catch (error: any) {
+      console.error("Load analytics error:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load analytics",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateMonthlyData = (data: any[], type: "earnings" | "count") => {
+    const months = ["Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan"];
+    const monthlyData = months.map(month => ({
+      month,
+      earnings: 0,
+      bookings: 0
+    }));
+
+    // In production, calculate actual monthly data from created_at dates
+    data.forEach(item => {
+      const month = new Date(item.created_at).getMonth();
+      const monthIndex = month >= 6 ? month - 6 : month + 6; // Adjust for Jul-Jan range
+      if (monthIndex < 7) {
+        if (type === "earnings" && item.status === "completed") {
+          monthlyData[monthIndex].earnings += Number(item.total_amount || 0);
+        } else if (type === "count") {
+          monthlyData[monthIndex].bookings += 1;
+        }
+      }
+    });
+
+    return monthlyData;
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -67,7 +168,11 @@ export default function VendorAnalytics() {
             </div>
             
             <div className="flex gap-3">
-              <select className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+              <select 
+                value={timeRange}
+                onChange={(e) => setTimeRange(e.target.value)}
+                className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              >
                 <option value="7d">Last 7 days</option>
                 <option value="30d">Last 30 days</option>
                 <option value="90d">Last 90 days</option>
@@ -94,7 +199,7 @@ export default function VendorAnalytics() {
                 </span>
               </div>
               <p className="text-sm text-slate-600 mb-1">Total Revenue</p>
-              <p className="text-3xl font-bold text-slate-900">₦2.45M</p>
+              <p className="text-3xl font-bold text-slate-900">₦{stats.totalRevenue.toLocaleString()}</p>
             </Card>
 
             <Card className="p-6">
@@ -108,7 +213,7 @@ export default function VendorAnalytics() {
                 </span>
               </div>
               <p className="text-sm text-slate-600 mb-1">Total Bookings</p>
-              <p className="text-3xl font-bold text-slate-900">168</p>
+              <p className="text-3xl font-bold text-slate-900">{stats.totalBookings}</p>
             </Card>
 
             <Card className="p-6">
@@ -122,7 +227,7 @@ export default function VendorAnalytics() {
                 </span>
               </div>
               <p className="text-sm text-slate-600 mb-1">Active Listings</p>
-              <p className="text-3xl font-bold text-slate-900">24</p>
+              <p className="text-3xl font-bold text-slate-900">{stats.activeListings}</p>
             </Card>
 
             <Card className="p-6">
@@ -136,7 +241,7 @@ export default function VendorAnalytics() {
                 </span>
               </div>
               <p className="text-sm text-slate-600 mb-1">Avg. Rating</p>
-              <p className="text-3xl font-bold text-slate-900">4.8</p>
+              <p className="text-3xl font-bold text-slate-900">{stats.avgRating}</p>
             </Card>
           </div>
 
@@ -172,50 +277,45 @@ export default function VendorAnalytics() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <Card className="p-6">
               <h3 className="text-lg font-bold text-slate-900 mb-4">Category Distribution</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
+              {categoryData.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <PieChart>
+                      <Pie
+                        data={categoryData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {categoryData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    {categoryData.map((cat) => (
+                      <div key={cat.name} className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }}></div>
+                        <span className="text-sm text-slate-600">{cat.name}</span>
+                      </div>
                     ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="grid grid-cols-2 gap-2 mt-4">
-                {categoryData.map((cat) => (
-                  <div key={cat.name} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }}></div>
-                    <span className="text-sm text-slate-600">{cat.name}</span>
                   </div>
-                ))}
-              </div>
+                </>
+              ) : (
+                <p className="text-center text-slate-500 py-12">No data available</p>
+              )}
             </Card>
 
             <Card className="lg:col-span-2 p-6">
               <h3 className="text-lg font-bold text-slate-900 mb-4">Top Performing Equipment</h3>
-              <div className="space-y-4">
-                {topEquipment.map((item, index) => (
-                  <div key={item.name} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                    <div className="flex items-center gap-4">
-                      <span className="text-2xl font-bold text-slate-300">#{index + 1}</span>
-                      <div>
-                        <p className="font-medium text-slate-900">{item.name}</p>
-                        <p className="text-sm text-slate-600">{item.bookings} bookings</p>
-                      </div>
-                    </div>
-                    <p className="text-lg font-bold text-primary">₦{item.revenue.toLocaleString()}</p>
-                  </div>
-                ))}
-              </div>
+              <p className="text-center text-slate-500 py-12">
+                Create more listings to see performance data
+              </p>
             </Card>
           </div>
         </main>

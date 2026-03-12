@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { BookingCard } from "@/components/BookingCard";
@@ -9,67 +10,116 @@ import { Calendar } from "@/components/ui/calendar";
 import { 
   Calendar as CalendarIcon,
   Search,
-  Filter,
-  Download
+  Download,
+  Loader2
 } from "lucide-react";
 import { SEO } from "@/components/SEO";
 import { StatusBadge } from "@/components/StatusBadge";
+import { bookingService } from "@/services/bookingService";
+import { authService } from "@/services/authService";
+import { useToast } from "@/hooks/use-toast";
 
 export default function VendorBookings() {
+  const router = useRouter();
+  const { toast } = useToast();
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [loading, setLoading] = useState(true);
+  const [bookings, setBookings] = useState<any[]>([]);
 
-  const bookings = [
-    {
-      id: "BK001",
-      equipment: "Concrete Mixer - 180L",
-      image: "https://images.unsplash.com/photo-1581094271901-8022df4466f9?w=400",
-      renter: "John Doe",
-      startDate: new Date("2025-01-15"),
-      endDate: new Date("2025-01-20"),
-      amount: 75000,
-      status: "active" as const,
-      location: "Lagos, Nigeria"
-    },
-    {
-      id: "BK002",
-      equipment: "Scaffolding Set - 50ft",
-      image: "https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=400",
-      renter: "Jane Smith",
-      startDate: new Date("2025-01-18"),
-      endDate: new Date("2025-01-25"),
-      amount: 120000,
-      status: "pending" as const,
-      location: "Abuja, Nigeria"
-    },
-    {
-      id: "BK003",
-      equipment: "Power Generator - 10KVA",
-      image: "https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=400",
-      renter: "Mike Johnson",
-      startDate: new Date("2025-01-10"),
-      endDate: new Date("2025-01-14"),
-      amount: 85000,
-      status: "completed" as const,
-      location: "Port Harcourt, Nigeria"
-    },
-    {
-      id: "BK004",
-      equipment: "Welding Machine - 200A",
-      image: "https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=400",
-      renter: "Sarah Williams",
-      startDate: new Date("2025-01-22"),
-      endDate: new Date("2025-01-28"),
-      amount: 60000,
-      status: "active" as const,
-      location: "Lagos, Nigeria"
-    },
-  ];
+  useEffect(() => {
+    checkAuthAndLoadData();
+  }, []);
 
-  const filteredBookings = bookings.filter(booking => 
-    statusFilter === "all" || booking.status === statusFilter
-  );
+  const checkAuthAndLoadData = async () => {
+    try {
+      const hasRole = await authService.hasRole("vendor");
+      if (!hasRole) {
+        toast({
+          title: "Access Denied",
+          description: "You must be a vendor to access this page",
+          variant: "destructive"
+        });
+        router.push("/");
+        return;
+      }
+
+      await loadBookings();
+    } catch (error) {
+      console.error("Auth check error:", error);
+      router.push("/auth/login");
+    }
+  };
+
+  const loadBookings = async () => {
+    try {
+      setLoading(true);
+      const data = await bookingService.getVendorBookings();
+      setBookings(data || []);
+    } catch (error: any) {
+      console.error("Load bookings error:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load bookings",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAcceptBooking = async (bookingId: string) => {
+    try {
+      await bookingService.acceptBooking(bookingId);
+      toast({
+        title: "Success",
+        description: "Booking accepted successfully"
+      });
+      await loadBookings();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to accept booking",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleRejectBooking = async (bookingId: string) => {
+    try {
+      await bookingService.rejectBooking(bookingId);
+      toast({
+        title: "Success",
+        description: "Booking rejected and refund processed"
+      });
+      await loadBookings();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject booking",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const filteredBookings = bookings.filter(booking => {
+    const matchesStatus = statusFilter === "all" || booking.status === statusFilter;
+    const matchesSearch = 
+      booking.listing?.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      booking.renter?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      booking.booking_number?.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesStatus && matchesSearch;
+  });
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -113,6 +163,8 @@ export default function VendorBookings() {
                   <Input
                     type="text"
                     placeholder="Search bookings..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10"
                   />
                 </div>
@@ -140,23 +192,32 @@ export default function VendorBookings() {
 
           {viewMode === "list" ? (
             <div className="space-y-4">
-              {filteredBookings.map((booking) => (
-                <BookingCard
-                  key={booking.id}
-                  bookingId={booking.id}
-                  equipmentName={booking.equipment}
-                  equipmentImage={booking.image}
-                  startDate={booking.startDate}
-                  endDate={booking.endDate}
-                  totalPrice={booking.amount}
-                  status={booking.status}
-                  userRole="vendor"
-                  renterName={booking.renter}
-                  location={booking.location}
-                  onAccept={() => console.log("Accept:", booking.id)}
-                  onReject={() => console.log("Reject:", booking.id)}
-                />
-              ))}
+              {filteredBookings.length === 0 ? (
+                <Card className="p-12 text-center">
+                  <CalendarIcon className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                  <p className="text-slate-600 mb-4">
+                    {searchQuery ? "No bookings found matching your search" : "No bookings yet"}
+                  </p>
+                </Card>
+              ) : (
+                filteredBookings.map((booking) => (
+                  <BookingCard
+                    key={booking.id}
+                    bookingId={booking.booking_number}
+                    equipmentName={booking.listing?.title || "Unknown Equipment"}
+                    equipmentImage={booking.listing?.images?.[0] || "https://images.unsplash.com/photo-1581094271901-8022df4466f9?w=400"}
+                    startDate={new Date(booking.start_date)}
+                    endDate={new Date(booking.end_date)}
+                    totalPrice={Number(booking.total_amount)}
+                    status={booking.status}
+                    userRole="vendor"
+                    renterName={booking.renter?.full_name || "Unknown Renter"}
+                    location={booking.listing?.location || "Unknown Location"}
+                    onAccept={() => handleAcceptBooking(booking.id)}
+                    onReject={() => handleRejectBooking(booking.id)}
+                  />
+                ))
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -177,11 +238,11 @@ export default function VendorBookings() {
                 <div className="space-y-4">
                   {filteredBookings.slice(0, 3).map((booking) => (
                     <div key={booking.id} className="p-4 bg-slate-50 rounded-lg">
-                      <p className="font-medium text-slate-900">{booking.equipment}</p>
-                      <p className="text-sm text-slate-600 mt-1">{booking.renter}</p>
+                      <p className="font-medium text-slate-900">{booking.listing?.title || "Unknown"}</p>
+                      <p className="text-sm text-slate-600 mt-1">{booking.renter?.full_name || "Unknown"}</p>
                       <div className="flex items-center justify-between mt-2">
                         <span className="text-sm font-medium text-primary">
-                          ₦{booking.amount.toLocaleString()}
+                          ₦{Number(booking.total_amount).toLocaleString()}
                         </span>
                         <StatusBadge status={booking.status} />
                       </div>
