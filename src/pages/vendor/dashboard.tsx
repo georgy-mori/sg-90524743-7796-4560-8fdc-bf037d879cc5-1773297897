@@ -71,7 +71,7 @@ export default function VendorDashboard() {
       
       // Load vendor listings
       const listings = await listingService.getVendorListings();
-      const activeListings = listings.filter(l => l.availability === "available").length;
+      const activeListings = listings.filter(l => l.availability === "active").length;
 
       // Load vendor bookings
       const bookings = await bookingService.getVendorBookings();

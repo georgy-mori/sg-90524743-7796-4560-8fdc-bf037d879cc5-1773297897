@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { EquipmentCard } from "@/components/EquipmentCard";
@@ -9,82 +10,115 @@ import Link from "next/link";
 import { 
   Package, 
   Search, 
-  Filter,
   Plus,
   Grid3x3,
-  List
+  List,
+  Loader2
 } from "lucide-react";
 import { SEO } from "@/components/SEO";
+import { listingService } from "@/services/listingService";
+import { authService } from "@/services/authService";
+import { useToast } from "@/hooks/use-toast";
 
 export default function VendorListings() {
+  const router = useRouter();
+  const { toast } = useToast();
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [listings, setListings] = useState<any[]>([]);
 
-  const listings = [
-    {
-      id: "1",
-      name: "Concrete Mixer - 180L Industrial",
-      category: "Construction",
-      image: "https://images.unsplash.com/photo-1581094271901-8022df4466f9?w=800",
-      price: 15000,
-      rating: 4.8,
-      reviews: 45,
-      location: "Lagos, Nigeria",
-      verified: true,
-      status: "available" as const,
-      bookings: 23,
-      earnings: "₦345,000",
-    },
-    {
-      id: "2",
-      name: "Scaffolding Complete Set - 50ft",
-      category: "Construction",
-      image: "https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=800",
-      price: 25000,
-      rating: 4.9,
-      reviews: 67,
-      location: "Lagos, Nigeria",
-      verified: true,
-      status: "rented" as const,
-      bookings: 34,
-      earnings: "₦850,000",
-    },
-    {
-      id: "3",
-      name: "Power Generator - 10KVA Diesel",
-      category: "Power Tools",
-      image: "https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=800",
-      price: 18000,
-      rating: 4.7,
-      reviews: 52,
-      location: "Lagos, Nigeria",
-      verified: true,
-      status: "maintenance" as const,
-      bookings: 18,
-      earnings: "₦324,000",
-    },
-    {
-      id: "4",
-      name: "Welding Machine - 200A Arc Welder",
-      category: "Power Tools",
-      image: "https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=800",
-      price: 12000,
-      rating: 4.6,
-      reviews: 38,
-      location: "Lagos, Nigeria",
-      verified: false,
-      status: "available" as const,
-      bookings: 15,
-      earnings: "₦180,000",
-    },
-  ];
+  useEffect(() => {
+    checkAuthAndLoadData();
+  }, []);
+
+  const checkAuthAndLoadData = async () => {
+    try {
+      const hasRole = await authService.hasRole("vendor");
+      if (!hasRole) {
+        toast({
+          title: "Access Denied",
+          description: "You must be a vendor to access this page",
+          variant: "destructive"
+        });
+        router.push("/");
+        return;
+      }
+
+      await loadListings();
+    } catch (error) {
+      console.error("Auth check error:", error);
+      router.push("/auth/login");
+    }
+  };
+
+  const loadListings = async () => {
+    try {
+      setLoading(true);
+      const data = await listingService.getVendorListings();
+      setListings(data || []);
+    } catch (error: any) {
+      console.error("Load listings error:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load listings",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteListing = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this listing?")) return;
+
+    try {
+      await listingService.deleteListing(id);
+      toast({
+        title: "Success",
+        description: "Listing deleted successfully"
+      });
+      await loadListings();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete listing",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleUpdateAvailability = async (id: string, status: "active" | "rented" | "maintenance") => {
+    try {
+      await listingService.updateAvailability(id, status);
+      toast({
+        title: "Success",
+        description: "Availability updated successfully"
+      });
+      await loadListings();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update availability",
+        variant: "destructive"
+      });
+    }
+  };
 
   const filteredListings = listings.filter((listing) => {
-    const matchesSearch = listing.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === "all" || listing.status === statusFilter;
+    const matchesSearch = listing.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === "all" || listing.availability === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -97,7 +131,6 @@ export default function VendorListings() {
         <Header />
 
         <main className="container mx-auto px-4 py-8">
-          {/* Page Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
             <div>
               <h1 className="text-3xl font-bold text-slate-900">My Listings</h1>
@@ -112,7 +145,6 @@ export default function VendorListings() {
             </Link>
           </div>
 
-          {/* Filters and Search */}
           <Card className="p-6 mb-8">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="flex-1">
@@ -134,9 +166,10 @@ export default function VendorListings() {
                 className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="all">All Status</option>
-                <option value="available">Available</option>
+                <option value="active">Available</option>
                 <option value="rented">Rented</option>
                 <option value="maintenance">Maintenance</option>
+                <option value="draft">Draft</option>
               </select>
 
               <div className="flex gap-2">
@@ -158,7 +191,6 @@ export default function VendorListings() {
             </div>
           </Card>
 
-          {/* Stats Summary */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
             <Card className="p-6">
               <div className="flex items-center justify-between">
@@ -174,7 +206,7 @@ export default function VendorListings() {
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Available</p>
                   <p className="text-2xl font-bold text-green-600">
-                    {listings.filter(l => l.status === "available").length}
+                    {listings.filter(l => l.availability === "active").length}
                   </p>
                 </div>
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
@@ -185,7 +217,7 @@ export default function VendorListings() {
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Rented</p>
                   <p className="text-2xl font-bold text-blue-600">
-                    {listings.filter(l => l.status === "rented").length}
+                    {listings.filter(l => l.availability === "rented").length}
                   </p>
                 </div>
                 <div className="w-3 h-3 rounded-full bg-blue-500"></div>
@@ -196,7 +228,7 @@ export default function VendorListings() {
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Maintenance</p>
                   <p className="text-2xl font-bold text-yellow-600">
-                    {listings.filter(l => l.status === "maintenance").length}
+                    {listings.filter(l => l.availability === "maintenance").length}
                   </p>
                 </div>
                 <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
@@ -204,7 +236,6 @@ export default function VendorListings() {
             </Card>
           </div>
 
-          {/* Listings Grid/List */}
           {filteredListings.length === 0 ? (
             <Card className="p-12 text-center">
               <Package className="w-16 h-16 mx-auto mb-4 text-slate-300" />
@@ -224,33 +255,41 @@ export default function VendorListings() {
               {filteredListings.map((listing) => (
                 <div key={listing.id} className="relative group">
                   <EquipmentCard 
-                    title={listing.name}
-                    category={listing.category}
-                    imageUrl={listing.image}
-                    price={listing.price}
-                    rating={listing.rating}
-                    reviewCount={listing.reviews}
+                    title={listing.title}
+                    category={listing.category?.name || "Uncategorized"}
+                    imageUrl={listing.images?.[0] || "https://images.unsplash.com/photo-1581094271901-8022df4466f9?w=400"}
+                    price={Number(listing.price_per_day)}
+                    rating={4.5}
+                    reviewCount={0}
                     location={listing.location}
-                    availability={listing.status === "available" ? "available" : listing.status === "rented" ? "rented" : "maintenance"}
+                    availability={listing.availability === "active" ? "available" : listing.availability === "rented" ? "rented" : "maintenance"}
                   />
-                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                     <Link href={`/vendor/listings/${listing.id}/edit`}>
                       <Button size="sm" variant="secondary">
                         Edit
                       </Button>
                     </Link>
+                    <Button 
+                      size="sm" 
+                      variant="destructive"
+                      onClick={() => handleDeleteListing(listing.id)}
+                    >
+                      Delete
+                    </Button>
                   </div>
                   
-                  {/* Additional Stats Overlay */}
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <Card className="p-3">
-                      <p className="text-xs text-slate-600">Total Bookings</p>
-                      <p className="text-lg font-bold text-slate-900">{listing.bookings}</p>
-                    </Card>
-                    <Card className="p-3">
-                      <p className="text-xs text-slate-600">Total Earnings</p>
-                      <p className="text-lg font-bold text-primary">{listing.earnings}</p>
-                    </Card>
+                  <div className="mt-4">
+                    <select
+                      value={listing.availability}
+                      onChange={(e) => handleUpdateAvailability(listing.id, e.target.value as any)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    >
+                      <option value="active">Available</option>
+                      <option value="rented">Rented</option>
+                      <option value="maintenance">Maintenance</option>
+                      <option value="draft">Draft</option>
+                    </select>
                   </div>
                 </div>
               ))}
