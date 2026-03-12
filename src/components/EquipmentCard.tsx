@@ -14,11 +14,13 @@ interface EquipmentCardProps {
   rating: number;
   reviewCount: number;
   imageUrl: string;
+  images?: string[];
   availability: "available" | "rented" | "maintenance";
   isVerified?: boolean;
   isFavorite?: boolean;
   onFavoriteToggle?: () => void;
   onClick?: () => void;
+  onImageClick?: () => void;
   className?: string;
 }
 
@@ -31,11 +33,13 @@ export function EquipmentCard({
   rating,
   reviewCount,
   imageUrl,
+  images,
   availability,
   isVerified = false,
   isFavorite = false,
   onFavoriteToggle,
   onClick,
+  onImageClick,
   className,
 }: EquipmentCardProps) {
   return (
@@ -48,7 +52,15 @@ export function EquipmentCard({
       onClick={onClick}
     >
       {/* Image Container */}
-      <div className="relative h-52 overflow-hidden bg-muted">
+      <div 
+        className="relative h-52 overflow-hidden bg-muted"
+        onClick={(e) => {
+          if (onImageClick) {
+            e.stopPropagation();
+            onImageClick();
+          }
+        }}
+      >
         <img
           src={imageUrl}
           alt={title}
@@ -57,6 +69,15 @@ export function EquipmentCard({
         
         {/* Gradient Overlay on Hover */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        
+        {/* View Full Image Hint */}
+        {images && images.length > 0 && (
+          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <div className="bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg">
+              <span className="text-sm font-medium">Click to view images</span>
+            </div>
+          </div>
+        )}
         
         {/* Top Right Badges */}
         <div className="absolute top-3 right-3 flex flex-col gap-2">
