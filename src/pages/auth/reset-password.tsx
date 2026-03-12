@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -10,10 +10,10 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Package, Lock, Eye, EyeOff, CheckCircle, AlertCircle } from "lucide-react";
+import { authService } from "@/services/authService";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const { token } = router.query;
   
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -24,8 +24,8 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState("");
 
   const validatePassword = () => {
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters long");
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long");
       return false;
     }
     if (password !== confirmPassword) {
@@ -43,11 +43,14 @@ export default function ResetPasswordPage() {
     
     setIsLoading(true);
     
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      await authService.updatePassword(password);
       setIsSuccess(true);
+    } catch (err: any) {
+      setError(err.message || "Failed to reset password. The link might have expired.");
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const passwordStrength = () => {
@@ -58,30 +61,6 @@ export default function ResetPasswordPage() {
   };
 
   const strength = passwordStrength();
-
-  if (!token) {
-    return (
-      <>
-        <SEO title="Invalid Reset Link - EquipRent" />
-        <div className="min-h-screen flex flex-col">
-          <Header />
-          <main className="flex-1 flex items-center justify-center py-12 px-4">
-            <Card className="w-full max-w-md p-8 text-center space-y-4">
-              <AlertCircle className="w-16 h-16 text-red-500 mx-auto" />
-              <h1 className="font-heading font-bold text-2xl">Invalid Reset Link</h1>
-              <p className="text-muted-foreground">
-                This password reset link is invalid or has expired.
-              </p>
-              <Button className="w-full btn-action" asChild>
-                <Link href="/auth/forgot-password">Request New Link</Link>
-              </Button>
-            </Card>
-          </main>
-          <Footer />
-        </div>
-      </>
-    );
-  }
 
   return (
     <>

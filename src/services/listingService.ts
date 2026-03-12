@@ -186,6 +186,21 @@ class ListingService {
       throw new Error(error.message || "Failed to update availability");
     }
   }
+
+  async getCategories() {
+    try {
+      const { data, error } = await supabase
+        .from("categories")
+        .select("*")
+        .order("name");
+
+      if (error) throw error;
+      return data || [];
+    } catch (error: any) {
+      console.error("Get categories error:", error);
+      throw new Error(error.message || "Failed to fetch categories");
+    }
+  }
 }
 
 export const listingService = new ListingService();
