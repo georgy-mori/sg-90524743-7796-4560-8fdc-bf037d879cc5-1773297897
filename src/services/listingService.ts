@@ -1,9 +1,4 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
-
-type Listing = Database["public"]["Tables"]["listings"]["Row"];
-type ListingInsert = Database["public"]["Tables"]["listings"]["Insert"];
-type ListingUpdate = Database["public"]["Tables"]["listings"]["Update"];
 
 export interface CreateListingData {
   title: string;
@@ -13,32 +8,24 @@ export interface CreateListingData {
   price_per_week?: number;
   price_per_month?: number;
   location: string;
-  latitude?: number;
-  longitude?: number;
   images?: string[];
-  availability_status?: "available" | "rented" | "maintenance";
-  requires_kyc?: boolean;
-  delivery_available?: boolean;
-  pickup_available?: boolean;
+  availability?: "active" | "rented" | "maintenance" | "draft";
 }
 
 class ListingService {
-  /**
-   * Create a new listing
-   */
   async createListing(data: CreateListingData) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const listingData: ListingInsert = {
+      const listingData = {
         vendor_id: user.id,
         ...data,
       };
 
       const { data: listing, error } = await supabase
         .from("listings")
-        .insert(listingData)
+        .insert(listingData as any)
         .select()
         .single();
 
@@ -50,15 +37,12 @@ class ListingService {
     }
   }
 
-  /**
-   * Get all listings with filters
-   */
   async getListings(filters?: {
     category_id?: string;
     min_price?: number;
     max_price?: number;
     location?: string;
-    availability_status?: string;
+    availability?: string;
     search?: string;
   }) {
     try {
@@ -68,29 +52,23 @@ class ListingService {
           *,
           vendor:profiles!vendor_id(id, full_name, avatar_url),
           category:categories(id, name)
-        `)
-        .eq("status", "approved");
+        `) as any;
 
       if (filters?.category_id) {
         query = query.eq("category_id", filters.category_id);
       }
-
       if (filters?.min_price) {
         query = query.gte("price_per_day", filters.min_price);
       }
-
       if (filters?.max_price) {
         query = query.lte("price_per_day", filters.max_price);
       }
-
       if (filters?.location) {
         query = query.ilike("location", `%${filters.location}%`);
       }
-
-      if (filters?.availability_status) {
-        query = query.eq("availability_status", filters.availability_status);
+      if (filters?.availability) {
+        query = query.eq("availability", filters.availability);
       }
-
       if (filters?.search) {
         query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`);
       }
@@ -107,9 +85,6 @@ class ListingService {
     }
   }
 
-  /**
-   * Get listing by ID
-   */
   async getListingById(id: string) {
     try {
       const { data, error } = await supabase
@@ -131,9 +106,6 @@ class ListingService {
     }
   }
 
-  /**
-   * Get vendor's listings
-   */
   async getVendorListings() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -156,9 +128,6 @@ class ListingService {
     }
   }
 
-  /**
-   * Update listing
-   */
   async updateListing(id: string, data: Partial<CreateListingData>) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -166,7 +135,7 @@ class ListingService {
 
       const { data: listing, error } = await supabase
         .from("listings")
-        .update(data as ListingUpdate)
+        .update(data as any)
         .eq("id", id)
         .eq("vendor_id", user.id)
         .select()
@@ -180,9 +149,6 @@ class ListingService {
     }
   }
 
-  /**
-   * Delete listing
-   */
   async deleteListing(id: string) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -202,17 +168,14 @@ class ListingService {
     }
   }
 
-  /**
-   * Update listing availability
-   */
-  async updateAvailability(id: string, status: "available" | "rented" | "maintenance") {
+  async updateAvailability(id: string, status: "active" | "rented" | "maintenance") {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
       const { error } = await supabase
         .from("listings")
-        .update({ availability_status: status })
+        .update({ availability: status } as any)
         .eq("id", id)
         .eq("vendor_id", user.id);
 

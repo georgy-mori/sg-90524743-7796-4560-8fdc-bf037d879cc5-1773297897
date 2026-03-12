@@ -1,80 +1,84 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
-
-type Booking = Database["public"]["Tables"]["bookings"]["Row"];
-type BookingInsert = Database["public"]["Tables"]["bookings"]["Insert"];
-type BookingStatus = Database["public"]["Enums"]["booking_status"];
 
 export interface CreateBookingData {
   listing_id: string;
   start_date: string;
   end_date: string;
-  total_price: number;
-  delivery_required?: boolean;
-  delivery_address?: string;
+  notes?: string;
 }
 
 class BookingService {
-  /**
-   * Create a new booking
-   */
   async createBooking(data: CreateBookingData) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Check wallet balance
+      const { data: listing } = await supabase
+        .from("listings")
+        .select("vendor_id, price_per_day, title")
+        .eq("id", data.listing_id)
+        .single();
+
+      if (!listing) throw new Error("Listing not found");
+
+      const start = new Date(data.start_date);
+      const end = new Date(data.end_date);
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const total_days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+      const total_amount = total_days * Number(listing.price_per_day);
+      const booking_number = `BK-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+
       const { data: wallet } = await supabase
         .from("wallets")
-        .select("balance")
+        .select("id, balance")
         .eq("user_id", user.id)
         .single();
 
-      if (!wallet || wallet.balance < data.total_price) {
+      if (!wallet || Number(wallet.balance) < total_amount) {
         throw new Error("Insufficient wallet balance");
       }
 
-      // Create booking
-      const bookingData: BookingInsert = {
+      const bookingData = {
+        booking_number,
         renter_id: user.id,
-        ...data,
+        vendor_id: listing.vendor_id,
+        listing_id: data.listing_id,
+        start_date: data.start_date,
+        end_date: data.end_date,
+        total_days,
+        price_per_day: listing.price_per_day,
+        total_amount,
         status: "pending",
+        notes: data.notes || "",
       };
 
       const { data: booking, error: bookingError } = await supabase
         .from("bookings")
-        .insert(bookingData)
-        .select(`
-          *,
-          listing:listings(
-            id,
-            title,
-            images,
-            vendor_id,
-            vendor:profiles!vendor_id(full_name, phone)
-          )
-        `)
+        .insert(bookingData as any)
+        .select(`*, listing:listings(title)`)
         .single();
 
       if (bookingError) throw bookingError;
 
-      // Deduct from wallet
+      const newBalance = Number(wallet.balance) - total_amount;
       const { error: walletError } = await supabase
         .from("wallets")
-        .update({ balance: wallet.balance - data.total_price })
+        .update({ balance: newBalance } as any)
         .eq("user_id", user.id);
 
       if (walletError) throw walletError;
 
-      // Create wallet transaction
       await supabase.from("wallet_transactions").insert({
-        wallet_id: user.id,
+        wallet_id: wallet.id,
+        user_id: user.id,
         type: "debit",
-        amount: data.total_price,
-        description: `Booking payment for ${booking.listing?.title}`,
-        reference: `BK-${booking.id}`,
+        amount: total_amount,
+        balance_before: wallet.balance,
+        balance_after: newBalance,
+        description: `Booking payment for ${listing.title}`,
+        reference: `TX-${booking_number}`,
         status: "completed",
-      });
+      } as any);
 
       return booking;
     } catch (error: any) {
@@ -83,10 +87,7 @@ class BookingService {
     }
   }
 
-  /**
-   * Get user bookings (renter)
-   */
-  async getRenterBookings(status?: BookingStatus) {
+  async getRenterBookings(status?: string) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
@@ -122,10 +123,7 @@ class BookingService {
     }
   }
 
-  /**
-   * Get vendor bookings
-   */
-  async getVendorBookings(status?: BookingStatus) {
+  async getVendorBookings(status?: string) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
@@ -137,7 +135,7 @@ class BookingService {
           listing:listings!inner(id, title, images, vendor_id),
           renter:profiles!renter_id(id, full_name, phone, avatar_url, email)
         `)
-        .eq("listing.vendor_id", user.id);
+        .eq("vendor_id", user.id);
 
       if (status) {
         query = query.eq("status", status);
@@ -155,14 +153,11 @@ class BookingService {
     }
   }
 
-  /**
-   * Accept booking (vendor)
-   */
   async acceptBooking(bookingId: string) {
     try {
       const { error } = await supabase
         .from("bookings")
-        .update({ status: "confirmed" })
+        .update({ status: "confirmed" } as any)
         .eq("id", bookingId);
 
       if (error) throw error;
@@ -173,50 +168,47 @@ class BookingService {
     }
   }
 
-  /**
-   * Reject booking (vendor)
-   */
   async rejectBooking(bookingId: string) {
     try {
-      // Get booking details
       const { data: booking } = await supabase
         .from("bookings")
-        .select("*, listing:listings(vendor_id)")
+        .select("*")
         .eq("id", bookingId)
         .single();
 
       if (!booking) throw new Error("Booking not found");
 
-      // Update booking status
       const { error: bookingError } = await supabase
         .from("bookings")
-        .update({ status: "cancelled" })
+        .update({ status: "cancelled" } as any)
         .eq("id", bookingId);
 
       if (bookingError) throw bookingError;
 
-      // Refund to renter wallet
       const { data: wallet } = await supabase
         .from("wallets")
-        .select("balance")
+        .select("id, balance")
         .eq("user_id", booking.renter_id)
         .single();
 
       if (wallet) {
+        const newBalance = Number(wallet.balance) + Number(booking.total_amount);
         await supabase
           .from("wallets")
-          .update({ balance: wallet.balance + booking.total_price })
+          .update({ balance: newBalance } as any)
           .eq("user_id", booking.renter_id);
 
-        // Create refund transaction
         await supabase.from("wallet_transactions").insert({
-          wallet_id: booking.renter_id,
-          type: "credit",
-          amount: booking.total_price,
-          description: `Refund for cancelled booking`,
-          reference: `REFUND-${bookingId}`,
+          wallet_id: wallet.id,
+          user_id: booking.renter_id,
+          type: "refund",
+          amount: booking.total_amount,
+          balance_before: wallet.balance,
+          balance_after: newBalance,
+          description: `Refund for rejected booking ${booking.booking_number}`,
+          reference: `REF-${booking.booking_number}`,
           status: "completed",
-        });
+        } as any);
       }
 
       return true;
@@ -226,53 +218,50 @@ class BookingService {
     }
   }
 
-  /**
-   * Complete booking (vendor)
-   */
   async completeBooking(bookingId: string) {
     try {
       const { data: booking } = await supabase
         .from("bookings")
-        .select("*, listing:listings(vendor_id)")
+        .select("*")
         .eq("id", bookingId)
         .single();
 
       if (!booking) throw new Error("Booking not found");
 
-      // Update booking status
       const { error: bookingError } = await supabase
         .from("bookings")
-        .update({ status: "completed" })
+        .update({ status: "completed" } as any)
         .eq("id", bookingId);
 
       if (bookingError) throw bookingError;
 
-      // Credit vendor wallet
       const { data: vendorWallet } = await supabase
         .from("wallets")
-        .select("balance")
-        .eq("user_id", booking.listing?.vendor_id)
+        .select("id, balance")
+        .eq("user_id", booking.vendor_id)
         .single();
 
       if (vendorWallet) {
-        // Platform takes 10% commission
-        const commission = booking.total_price * 0.1;
-        const vendorAmount = booking.total_price - commission;
+        const commission = Number(booking.total_amount) * 0.1;
+        const vendorAmount = Number(booking.total_amount) - commission;
+        const newBalance = Number(vendorWallet.balance) + vendorAmount;
 
         await supabase
           .from("wallets")
-          .update({ balance: vendorWallet.balance + vendorAmount })
-          .eq("user_id", booking.listing?.vendor_id);
+          .update({ balance: newBalance } as any)
+          .eq("user_id", booking.vendor_id);
 
-        // Create vendor transaction
         await supabase.from("wallet_transactions").insert({
-          wallet_id: booking.listing?.vendor_id,
-          type: "credit",
+          wallet_id: vendorWallet.id,
+          user_id: booking.vendor_id,
+          type: "booking",
           amount: vendorAmount,
-          description: `Earnings from completed booking`,
-          reference: `EARN-${bookingId}`,
+          balance_before: vendorWallet.balance,
+          balance_after: newBalance,
+          description: `Earnings from completed booking ${booking.booking_number}`,
+          reference: `EARN-${booking.booking_number}`,
           status: "completed",
-        });
+        } as any);
       }
 
       return true;
@@ -282,9 +271,6 @@ class BookingService {
     }
   }
 
-  /**
-   * Cancel booking (renter)
-   */
   async cancelBooking(bookingId: string) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -299,35 +285,37 @@ class BookingService {
 
       if (!booking) throw new Error("Booking not found");
 
-      // Update booking
       const { error: bookingError } = await supabase
         .from("bookings")
-        .update({ status: "cancelled" })
+        .update({ status: "cancelled" } as any)
         .eq("id", bookingId);
 
       if (bookingError) throw bookingError;
 
-      // Refund to wallet
       const { data: wallet } = await supabase
         .from("wallets")
-        .select("balance")
+        .select("id, balance")
         .eq("user_id", user.id)
         .single();
 
       if (wallet) {
+        const newBalance = Number(wallet.balance) + Number(booking.total_amount);
         await supabase
           .from("wallets")
-          .update({ balance: wallet.balance + booking.total_price })
+          .update({ balance: newBalance } as any)
           .eq("user_id", user.id);
 
         await supabase.from("wallet_transactions").insert({
-          wallet_id: user.id,
-          type: "credit",
-          amount: booking.total_price,
-          description: "Refund for cancelled booking",
-          reference: `REFUND-${bookingId}`,
+          wallet_id: wallet.id,
+          user_id: user.id,
+          type: "refund",
+          amount: booking.total_amount,
+          balance_before: wallet.balance,
+          balance_after: newBalance,
+          description: `Refund for cancelled booking ${booking.booking_number}`,
+          reference: `CAN-${booking.booking_number}`,
           status: "completed",
-        });
+        } as any);
       }
 
       return true;

@@ -1,7 +1,4 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
-
-type WalletTransaction = Database["public"]["Tables"]["wallet_transactions"]["Row"];
 
 export interface TopUpData {
   amount: number;
@@ -10,9 +7,6 @@ export interface TopUpData {
 }
 
 class WalletService {
-  /**
-   * Get wallet balance
-   */
   async getBalance() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -32,9 +26,6 @@ class WalletService {
     }
   }
 
-  /**
-   * Get wallet transactions
-   */
   async getTransactions(limit = 50) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -43,7 +34,7 @@ class WalletService {
       const { data, error } = await supabase
         .from("wallet_transactions")
         .select("*")
-        .eq("wallet_id", user.id)
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(limit);
 
@@ -55,42 +46,41 @@ class WalletService {
     }
   }
 
-  /**
-   * Top up wallet
-   */
   async topUp(data: TopUpData) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Get current balance
       const { data: wallet } = await supabase
         .from("wallets")
-        .select("balance")
+        .select("id, balance")
         .eq("user_id", user.id)
         .single();
 
       if (!wallet) throw new Error("Wallet not found");
 
-      // Update balance
+      const newBalance = Number(wallet.balance) + Number(data.amount);
+
       const { error: walletError } = await supabase
         .from("wallets")
-        .update({ balance: wallet.balance + data.amount })
+        .update({ balance: newBalance } as any)
         .eq("user_id", user.id);
 
       if (walletError) throw walletError;
 
-      // Create transaction record
       const { data: transaction, error: txError } = await supabase
         .from("wallet_transactions")
         .insert({
-          wallet_id: user.id,
-          type: "credit",
+          wallet_id: wallet.id,
+          user_id: user.id,
+          type: "topup",
           amount: data.amount,
+          balance_before: wallet.balance,
+          balance_after: newBalance,
           description: `Wallet top-up via ${data.payment_method}`,
-          reference: data.reference,
+          reference: data.reference || `TU-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
           status: "completed",
-        })
+        } as any)
         .select()
         .single();
 
@@ -103,9 +93,6 @@ class WalletService {
     }
   }
 
-  /**
-   * Request payout (vendor)
-   */
   async requestPayout(amount: number, bankDetails: {
     bank_name: string;
     account_number: string;
@@ -115,18 +102,18 @@ class WalletService {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Check balance
       const { data: wallet } = await supabase
         .from("wallets")
-        .select("balance")
+        .select("id, balance")
         .eq("user_id", user.id)
         .single();
 
-      if (!wallet || wallet.balance < amount) {
+      if (!wallet || Number(wallet.balance) < amount) {
         throw new Error("Insufficient balance");
       }
 
-      // Create payout request
+      const reference = `PO-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+
       const { data: payout, error } = await supabase
         .from("payouts")
         .insert({
@@ -135,18 +122,32 @@ class WalletService {
           bank_name: bankDetails.bank_name,
           account_number: bankDetails.account_number,
           account_name: bankDetails.account_name,
+          reference,
           status: "pending",
-        })
+        } as any)
         .select()
         .single();
 
       if (error) throw error;
 
-      // Deduct from available balance (hold funds)
+      const newBalance = Number(wallet.balance) - amount;
+
       await supabase
         .from("wallets")
-        .update({ balance: wallet.balance - amount })
+        .update({ balance: newBalance } as any)
         .eq("user_id", user.id);
+        
+      await supabase.from("wallet_transactions").insert({
+        wallet_id: wallet.id,
+        user_id: user.id,
+        type: "payout",
+        amount: amount,
+        balance_before: wallet.balance,
+        balance_after: newBalance,
+        description: `Payout request to ${bankDetails.bank_name}`,
+        reference: reference,
+        status: "pending",
+      } as any);
 
       return payout;
     } catch (error: any) {
@@ -155,9 +156,6 @@ class WalletService {
     }
   }
 
-  /**
-   * Get payout history
-   */
   async getPayouts() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
