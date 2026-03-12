@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { StatCard } from "@/components/StatCard";
 import { BookingCard } from "@/components/BookingCard";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SEO } from "@/components/SEO";
 import Link from "next/link";
 import { 
   Package, 
@@ -14,85 +16,185 @@ import {
   ArrowUpRight,
   Clock,
   CheckCircle,
-  XCircle
+  XCircle,
+  Loader2
 } from "lucide-react";
-import { SEO } from "@/components/SEO";
+import { authService } from "@/services/authService";
+import { listingService } from "@/services/listingService";
+import { bookingService } from "@/services/bookingService";
+import { walletService } from "@/services/walletService";
+import { useToast } from "@/hooks/use-toast";
 
 export default function VendorDashboard() {
+  const router = useRouter();
+  const { toast } = useToast();
   const [timeRange, setTimeRange] = useState("7d");
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalEarnings: 0,
+    activeListings: 0,
+    activeBookings: 0,
+    completionRate: 0
+  });
+  const [recentBookings, setRecentBookings] = useState<any[]>([]);
 
-  const stats = [
+  useEffect(() => {
+    checkAuthAndLoadData();
+  }, []);
+
+  const checkAuthAndLoadData = async () => {
+    try {
+      const hasRole = await authService.hasRole("vendor");
+      if (!hasRole) {
+        toast({
+          title: "Access Denied",
+          description: "You must be a vendor to access this page",
+          variant: "destructive"
+        });
+        router.push("/");
+        return;
+      }
+
+      await loadDashboardData();
+    } catch (error) {
+      console.error("Auth check error:", error);
+      router.push("/auth/login");
+    }
+  };
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+
+      // Load wallet balance
+      const balance = await walletService.getBalance();
+      
+      // Load vendor listings
+      const listings = await listingService.getVendorListings();
+      const activeListings = listings.filter(l => l.availability === "available").length;
+
+      // Load vendor bookings
+      const bookings = await bookingService.getVendorBookings();
+      const activeBookings = bookings.filter(b => b.status === "active" || b.status === "confirmed").length;
+      const completedBookings = bookings.filter(b => b.status === "completed").length;
+      const completionRate = bookings.length > 0 ? (completedBookings / bookings.length) * 100 : 0;
+
+      // Get recent bookings (last 5)
+      const recent = bookings.slice(0, 5);
+
+      setStats({
+        totalEarnings: Number(balance) || 0,
+        activeListings,
+        activeBookings,
+        completionRate
+      });
+
+      setRecentBookings(recent);
+    } catch (error: any) {
+      console.error("Load dashboard error:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load dashboard data",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAcceptBooking = async (bookingId: string) => {
+    try {
+      await bookingService.acceptBooking(bookingId);
+      toast({
+        title: "Success",
+        description: "Booking accepted successfully"
+      });
+      await loadDashboardData();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to accept booking",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleRejectBooking = async (bookingId: string) => {
+    try {
+      await bookingService.rejectBooking(bookingId);
+      toast({
+        title: "Success",
+        description: "Booking rejected and refund processed"
+      });
+      await loadDashboardData();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject booking",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const statsData = [
     {
       title: "Total Earnings",
-      value: "₦2,450,000",
+      value: `₦${stats.totalEarnings.toLocaleString()}`,
       change: "+12.5%",
       changeType: "increase" as const,
       icon: DollarSign,
     },
     {
       title: "Active Listings",
-      value: "24",
+      value: stats.activeListings.toString(),
       change: "+3",
       changeType: "increase" as const,
       icon: Package,
     },
     {
       title: "Active Bookings",
-      value: "12",
+      value: stats.activeBookings.toString(),
       change: "-2",
       changeType: "decrease" as const,
       icon: Calendar,
     },
     {
       title: "Completion Rate",
-      value: "98.5%",
+      value: `${stats.completionRate.toFixed(1)}%`,
       change: "+1.2%",
       changeType: "increase" as const,
       icon: TrendingUp,
     },
   ];
 
-  const recentBookings = [
-    {
-      id: "BK001",
-      equipment: "Concrete Mixer - 180L",
-      image: "https://images.unsplash.com/photo-1581094271901-8022df4466f9?w=400",
-      renter: "John Doe",
-      startDate: new Date("2025-01-15"),
-      endDate: new Date("2025-01-20"),
-      amount: 75000,
-      status: "active" as const,
-      location: "Lagos, Nigeria"
+  const quickStats = [
+    { 
+      label: "Pending Approval", 
+      value: recentBookings.filter(b => b.status === "pending").length, 
+      icon: Clock, 
+      color: "text-yellow-600" 
     },
-    {
-      id: "BK002",
-      equipment: "Scaffolding Set - 50ft",
-      image: "https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=400",
-      renter: "Jane Smith",
-      startDate: new Date("2025-01-18"),
-      endDate: new Date("2025-01-25"),
-      amount: 120000,
-      status: "pending" as const,
-      location: "Abuja, Nigeria"
+    { 
+      label: "Confirmed Today", 
+      value: recentBookings.filter(b => b.status === "confirmed").length, 
+      icon: CheckCircle, 
+      color: "text-green-600" 
     },
-    {
-      id: "BK003",
-      equipment: "Power Generator - 10KVA",
-      image: "https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=400",
-      renter: "Mike Johnson",
-      startDate: new Date("2025-01-10"),
-      endDate: new Date("2025-01-14"),
-      amount: 85000,
-      status: "completed" as const,
-      location: "Port Harcourt, Nigeria"
+    { 
+      label: "Cancelled", 
+      value: recentBookings.filter(b => b.status === "cancelled").length, 
+      icon: XCircle, 
+      color: "text-red-600" 
     },
   ];
 
-  const quickStats = [
-    { label: "Pending Approval", value: 3, icon: Clock, color: "text-yellow-600" },
-    { label: "Confirmed Today", value: 5, icon: CheckCircle, color: "text-green-600" },
-    { label: "Cancelled", value: 1, icon: XCircle, color: "text-red-600" },
-  ];
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -105,7 +207,6 @@ export default function VendorDashboard() {
         <Header />
 
         <main className="container mx-auto px-4 py-8">
-          {/* Page Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
             <div>
               <h1 className="text-3xl font-bold text-slate-900">Vendor Dashboard</h1>
@@ -124,23 +225,21 @@ export default function VendorDashboard() {
                 <option value="1y">Last year</option>
               </select>
               
-              <Link href="/vendor/listings/create">
+              <Link href="/vendor/listings">
                 <Button className="bg-primary hover:bg-primary/90">
                   <Package className="w-4 h-4 mr-2" />
-                  Add Listing
+                  Manage Listings
                 </Button>
               </Link>
             </div>
           </div>
 
-          {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {stats.map((stat) => (
+            {statsData.map((stat) => (
               <StatCard key={stat.title} {...stat} />
             ))}
           </div>
 
-          {/* Quick Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
             {quickStats.map((stat) => (
               <Card key={stat.label} className="p-6">
@@ -157,7 +256,6 @@ export default function VendorDashboard() {
             ))}
           </div>
 
-          {/* Recent Bookings */}
           <div className="mb-8">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-slate-900">Recent Bookings</h2>
@@ -169,28 +267,37 @@ export default function VendorDashboard() {
               </Link>
             </div>
 
-            <div className="space-y-4">
-              {recentBookings.map((booking) => (
-                <BookingCard
-                  key={booking.id}
-                  bookingId={booking.id}
-                  equipmentName={booking.equipment}
-                  equipmentImage={booking.image}
-                  startDate={booking.startDate}
-                  endDate={booking.endDate}
-                  totalPrice={booking.amount}
-                  status={booking.status}
-                  userRole="vendor"
-                  renterName={booking.renter}
-                  location={booking.location}
-                  onAccept={() => console.log("Accept:", booking.id)}
-                  onReject={() => console.log("Reject:", booking.id)}
-                />
-              ))}
-            </div>
+            {recentBookings.length > 0 ? (
+              <div className="space-y-4">
+                {recentBookings.map((booking) => (
+                  <BookingCard
+                    key={booking.id}
+                    bookingId={booking.booking_number}
+                    equipmentName={booking.listing?.title || "Unknown Equipment"}
+                    equipmentImage={booking.listing?.images?.[0] || "https://images.unsplash.com/photo-1581094271901-8022df4466f9?w=400"}
+                    startDate={new Date(booking.start_date)}
+                    endDate={new Date(booking.end_date)}
+                    totalPrice={Number(booking.total_amount)}
+                    status={booking.status}
+                    userRole="vendor"
+                    renterName={booking.renter?.full_name || "Unknown Renter"}
+                    location={booking.listing?.location || "Unknown Location"}
+                    onAccept={() => handleAcceptBooking(booking.id)}
+                    onReject={() => handleRejectBooking(booking.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <Card className="p-12 text-center">
+                <Calendar className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                <p className="text-slate-600 mb-4">No recent bookings</p>
+                <Link href="/vendor/listings">
+                  <Button>Create Your First Listing</Button>
+                </Link>
+              </Card>
+            )}
           </div>
 
-          {/* Quick Actions */}
           <Card className="p-6">
             <h3 className="text-xl font-bold text-slate-900 mb-4">Quick Actions</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
