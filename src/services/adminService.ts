@@ -8,7 +8,7 @@ class AdminService {
     status?: string;
   }) {
     try {
-      let query = supabase
+      let query: any = supabase
         .from("profiles")
         .select("*")
         .order("created_at", { ascending: false });
@@ -22,7 +22,8 @@ class AdminService {
       }
 
       if (filters?.status) {
-        query = query.eq("status", filters.status);
+        if (filters.status === "active") query = query.eq("is_active", true);
+        if (filters.status === "suspended") query = query.eq("is_active", false);
       }
 
       const { data, error } = await query;
@@ -36,9 +37,10 @@ class AdminService {
 
   async updateUserStatus(userId: string, status: "active" | "suspended" | "banned") {
     try {
+      const is_active = status === "active";
       const { data, error } = await supabase
         .from("profiles")
-        .update({ status })
+        .update({ is_active } as any)
         .eq("id", userId)
         .select()
         .single();
@@ -72,7 +74,7 @@ class AdminService {
         .from("profiles")
         .select("*")
         .eq("role", "vendor")
-        .eq("status", "pending")
+        .eq("kyc_status", "pending")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -87,7 +89,7 @@ class AdminService {
     try {
       const { data, error } = await supabase
         .from("profiles")
-        .update({ status: "active" })
+        .update({ kyc_status: "approved", is_verified: true } as any)
         .eq("id", vendorId)
         .select()
         .single();
@@ -104,7 +106,7 @@ class AdminService {
     try {
       const { data, error } = await supabase
         .from("profiles")
-        .update({ status: "suspended" })
+        .update({ kyc_status: "rejected" } as any)
         .eq("id", vendorId)
         .select()
         .single();
@@ -124,7 +126,7 @@ class AdminService {
     search?: string;
   }) {
     try {
-      let query = supabase
+      let query: any = supabase
         .from("listings")
         .select(`
           *,
@@ -134,7 +136,7 @@ class AdminService {
         .order("created_at", { ascending: false });
 
       if (filters?.status) {
-        query = query.eq("status", filters.status);
+        query = query.eq("availability", filters.status);
       }
 
       if (filters?.category) {
@@ -154,11 +156,11 @@ class AdminService {
     }
   }
 
-  async updateListingStatus(listingId: string, status: "active" | "inactive" | "suspended") {
+  async updateListingStatus(listingId: string, status: string) {
     try {
       const { data, error } = await supabase
         .from("listings")
-        .update({ status })
+        .update({ availability: status } as any)
         .eq("id", listingId)
         .select()
         .single();
@@ -191,7 +193,7 @@ class AdminService {
     dateRange?: { start: string; end: string };
   }) {
     try {
-      let query = supabase
+      let query: any = supabase
         .from("bookings")
         .select(`
           *,
@@ -244,7 +246,7 @@ class AdminService {
     try {
       const { data, error } = await supabase
         .from("payouts")
-        .update({ status: "completed", processed_at: new Date().toISOString() })
+        .update({ status: "completed", processed_at: new Date().toISOString() } as any)
         .eq("id", payoutId)
         .select()
         .single();
@@ -261,7 +263,7 @@ class AdminService {
     try {
       const { data, error } = await supabase
         .from("payouts")
-        .update({ status: "rejected" })
+        .update({ status: "rejected" } as any)
         .eq("id", payoutId)
         .select()
         .single();
@@ -322,7 +324,7 @@ class AdminService {
     try {
       const { data, error } = await supabase
         .from("kyc_submissions")
-        .update({ status: "approved", reviewed_at: new Date().toISOString() })
+        .update({ status: "approved", reviewed_at: new Date().toISOString() } as any)
         .eq("id", kycId)
         .select()
         .single();
@@ -343,7 +345,7 @@ class AdminService {
           status: "rejected", 
           reviewed_at: new Date().toISOString(),
           rejection_reason: reason 
-        })
+        } as any)
         .eq("id", kycId)
         .select()
         .single();
@@ -359,7 +361,7 @@ class AdminService {
   // Disputes Management
   async getAllDisputes(status?: string) {
     try {
-      let query = supabase
+      let query: any = supabase
         .from("disputes")
         .select(`
           *,
@@ -391,7 +393,7 @@ class AdminService {
           resolution,
           resolution_notes: resolutionNotes,
           resolved_at: new Date().toISOString()
-        })
+        } as any)
         .eq("id", disputeId)
         .select()
         .single();
