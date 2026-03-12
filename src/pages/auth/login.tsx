@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/router";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { SEO } from "@/components/SEO";
@@ -8,10 +9,71 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Package, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { Package, Mail, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
+import { authService } from "@/services/authService";
+import { useToast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    rememberMe: false
+  });
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, value } = e.target;
+    setFormData(prev => ({ ...prev, [id]: value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.email || !formData.password) {
+      toast({
+        title: "Error",
+        description: "Please fill in all fields",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { user } = await authService.login({
+        email: formData.email,
+        password: formData.password
+      });
+
+      toast({
+        title: "Success!",
+        description: "You have been logged in successfully"
+      });
+
+      // Get user role and redirect accordingly
+      const role = await authService.getUserRole();
+      
+      if (role === "admin") {
+        router.push("/admin/dashboard");
+      } else if (role === "vendor") {
+        router.push("/vendor/dashboard");
+      } else {
+        router.push("/renter/dashboard");
+      }
+    } catch (error: any) {
+      toast({
+        title: "Login Failed",
+        description: error.message || "Invalid email or password",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <>
@@ -40,7 +102,7 @@ export default function LoginPage() {
             </div>
 
             {/* Login Form */}
-            <form className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>
                 <div className="relative">
@@ -50,6 +112,10 @@ export default function LoginPage() {
                     type="email"
                     placeholder="you@example.com"
                     className="pl-10"
+                    value={formData.email}
+                    onChange={handleChange}
+                    disabled={loading}
+                    required
                   />
                 </div>
               </div>
@@ -63,11 +129,16 @@ export default function LoginPage() {
                     type={showPassword ? "text" : "password"}
                     placeholder="Enter your password"
                     className="pl-10 pr-10"
+                    value={formData.password}
+                    onChange={handleChange}
+                    disabled={loading}
+                    required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                    disabled={loading}
                   >
                     {showPassword ? (
                       <EyeOff className="w-5 h-5" />
@@ -80,8 +151,15 @@ export default function LoginPage() {
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Checkbox id="remember" />
-                  <Label htmlFor="remember" className="text-sm font-normal cursor-pointer">
+                  <Checkbox 
+                    id="rememberMe" 
+                    checked={formData.rememberMe}
+                    onCheckedChange={(checked) => 
+                      setFormData(prev => ({ ...prev, rememberMe: checked as boolean }))
+                    }
+                    disabled={loading}
+                  />
+                  <Label htmlFor="rememberMe" className="text-sm font-normal cursor-pointer">
                     Remember me
                   </Label>
                 </div>
@@ -93,8 +171,15 @@ export default function LoginPage() {
                 </Link>
               </div>
 
-              <Button type="submit" className="w-full btn-action">
-                Sign In
+              <Button type="submit" className="w-full btn-action" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  "Sign In"
+                )}
               </Button>
 
               <div className="relative">
@@ -109,7 +194,7 @@ export default function LoginPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <Button variant="outline" type="button">
+                <Button variant="outline" type="button" disabled={loading}>
                   <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                     <path
                       fill="currentColor"
@@ -130,7 +215,7 @@ export default function LoginPage() {
                   </svg>
                   Google
                 </Button>
-                <Button variant="outline" type="button">
+                <Button variant="outline" type="button" disabled={loading}>
                   <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
                   </svg>

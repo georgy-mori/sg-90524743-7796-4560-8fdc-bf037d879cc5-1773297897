@@ -1,4 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
+
+export type BookingStatus = Database["public"]["Enums"]["booking_status"];
 
 export interface CreateBookingData {
   listing_id: string;
@@ -87,7 +90,7 @@ class BookingService {
     }
   }
 
-  async getRenterBookings(status?: string) {
+  async getRenterBookings(status?: BookingStatus) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
@@ -123,7 +126,7 @@ class BookingService {
     }
   }
 
-  async getVendorBookings(status?: string) {
+  async getVendorBookings(status?: BookingStatus) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
